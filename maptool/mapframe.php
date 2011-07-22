@@ -1,73 +1,175 @@
 <?php
 
 // This script is used to display a Google Map from within an <iframe>
-// in the page. It's a generic tool that can be used for displaying
+// in the page. It's a generic tool that can be used for displaying 
 // all required kinds of maps (editing, viewing and overviews).
 //
-// The script takes the following parameters for modifying the
+// The script takes the following parameters for modifying the 
 // behaviour of the map tool:
 //
-// type        The type of map. This is one of:
-//             - location-editor
-//             - map-editor
-//             - viewer
-//             - plotter
+// phorum_url  The URL to the Phorum base (a.k.a. $PHORUM["http_path"]).
 //
-// <other>     Other parameters are used for setting the map state
-//             (longitude, latitude, zoom, marker, streetview, etc.)
+// mode        The displaying mode for the map. Either "view" or "edit".
 //
+// edittype    If mode is set to "edit", this parameter determines what
+//             kind of editing can be done on the map. Options are:
+//             nomarker  The user can only change the map state.
+//             marker    The user can place a single marker on the map.
+//
+// viewtype    If mode is set to "view", this parameter determines what
+//             kind of viewing can be done on the map. Options are:
+//             marker    Display a single marker on the map.
+//             plot      Plot multiple points on the map and automatically
+//                       change the map to make sure that all points fit
+//                       on the screen.
+//
+// api_key     This parameter is required and holds the API key
+//             that can be used for communicating with the 
+//             Google servers.
+//
+// dcenter     The default map center location, zoom level and map type.
+// dzoom       These are used to specify the map state to go to when
+// dtype       the resetMap() function is called. The type can be one
+//             of: normal, satellite, hybrid
+//
+// center      The start map center, zoom level and map type. These are
+// zoom        used to specify the map state to start with. The type can
+// type        be one of: normal, satellite, hybrid 
+//
+// marker      If this argument is set, a marker will be placed at the 
+//             specified location.
+//
+// charset     The charset to present data on the map in (default is "UTF-8")
+//
+// width       The width and height to use for to the map. These are
+// height      given in standard CSS format (e.g. 80% or 400px). Do not
+//             use 100% for the height.
+// 
+// language    The language to use. This will load the Phorum language file
+//             or the english file if the given language is not found
+//             (default is "english").
+//
+// If the map runs as a view/plot map type, it will check if the parent
+// frame contains an array named "markers". If that is the case, the 
+// marker descriptions in that array will be plotted on the map. Each item
+// in the array is an array itself, containing the following elements:
+// [0] longitude
+// [1] latitude
+// [2] HTML popup content (optional)
+//
+
+include(dirname(__FILE__) . "/constants.php");
 
 // Defaults for the arguments.
 $args = array(
-    "type"                 => "viewer",
-    "reset_latitude"       => 40,
-    "reset_longitude"      => -20,
-    "reset_zoom"           => 1,
-    "reset_type"           => 'roadmap',
-    "map_latitude"         => '',
-    "map_longitude"        => '',
-    "map_zoom"             => '',
-    "map_type"             => '',
-    "marker_latitude"      => '',
-    "marker_longitude"     => '',
-    "streetview_latitude"  => '',
-    "streetview_longitude" => '',
-    "streetview_zoom"      => '',
-    "streetview_heading"   => '',
-    "streetview_pitch"     => '',
-    "geoloc_country"       => '',
-    "geoloc_city"          => ''
+    "phorum_url" => NULL,
+    "api_key"    => NULL,
+    "mode"       => "view",
+    "edittype"   => "marker",
+    "viewtype"   => "marker",
+    "dcenter"    => "(40, -20)",
+    "dzoom"      => 1,
+    "dtype"      => "normal",
+    "center"     => NULL,
+    "zoom"       => NULL,
+    "type"       => NULL,
+    "charset"    => "utf-8",
+    "width"      => "100%",
+    "height"     => "400px",
+    "language"   => "english",
+    "marker"     => "",
 );
 
-// Grab and merge args from the request.
-foreach ($PHORUM['args'] as $k => $v) {
-    if (array_key_exists($k, $args) && $v !== '') {
+// Grab args from the request.
+foreach ($_REQUEST as $k => $v) {
+    if (array_key_exists($k, $args)) {
         $args[$k] = $v;
     }
 }
 
-// Check if all required arguments are set.
-foreach ($args as $k => $v) {
-    if (is_null($args[$k])) die("Missing Google Map parameter \"$k\"");
+// Inherit map state from the default map state.
+// If all state parameters are inherited, then remember that
+// the map's start state matches the reset state.
+$inherit_count = 0;
+foreach (array("center", "zoom", "type") as $k) {
+    if (is_null($args[$k]) || $args[$k] == '') {
+        $inherit_count ++;
+        $args[$k] = $args["d$k"];
+    }
+}
+$start_is_reset = ($inherit_count == 3);
+
+// Check if we have an api_key argument set.
+if (empty($args["api_key"]))
+{ ?>
+    <div style="border: 1px solid red; padding: 10px">
+      The module "google_maps" needs a Google API key to be able to
+      communicate to the Google map servers. Please register
+      a key for your server at
+      <a href="http://www.google.com/apis/maps/">the Google Maps API page</a>
+      and enter it at the
+      <a href="<?php print htmlspecialchars($args["phorum_url"]) ?>/admin.php?module=modsettings&mod=google_maps">Googe Maps module settings page</a>.
+    </div> <?php
+
+    return;
 }
 
-// Easy access to the language data.
+
+// Check if all required arguments are set.
+foreach ($args as $k => $v)
+  if (is_null($args[$k])) die("Missing Google Map parameter \"$k\"");
+
+// Check mode parameter.
+if ($args["mode"] != "edit" && $args["mode"] != "view") {
+    die ("Illegal value for parameter \"mode\"");
+}
+
+// Check edittype parameter.
+if ($args["mode"] == "edit" &&
+    ($args["edittype"] != "nomarker" && $args["edittype"] != "marker")) {
+    die ("Illegal value for parameter \"edittype\"");
+}
+
+// Check viewtype parameter.
+if ($args["mode"] == "view" &&
+    ($args["viewtype"] != "plot" && $args["viewtype"] != "marker")) {
+    die ("Illegal value for parameter \"viewtype\"");
+}
+
+// Check the location parameters.
+if (!preg_match(REGEXP_LOCATION, $args["center"])) 
+    die ("Illegal value for parameter \"center\"");
+if (!preg_match(REGEXP_LOCATION, $args["dcenter"])) 
+    die ("Illegal value for parameter \"dcenter\"");
+if ($args["marker"] != '' && !preg_match(REGEXP_LOCATION, $args["marker"])) 
+    die ("Illegal value for parameter \"marker\"");
+if (!preg_match(REGEXP_ZOOM, $args["zoom"])) 
+    die ("Illegal value for parameter \"zoom\"");
+if (!preg_match(REGEXP_ZOOM, $args["dzoom"])) 
+    die ("Illegal value for parameter \"dzoom\"");
+if (!preg_match(REGEXP_TYPE, $args["type"])) 
+    $args["type"] = DEFAULT_TYPE;
+if (!preg_match(REGEXP_TYPE, $args["dtype"])) 
+    $args["dtype"] = DEFAULT_TYPE;
+
+// Convert map type to map type JavaScript contants.
+$args["type"] = "G_".strtoupper($args["type"])."_MAP";
+$args["dtype"] = "G_".strtoupper($args["dtype"])."_MAP";
+
+// Load the language support.
+$language = basename($args["language"]); 
+if (! file_exists("../lang/{$language}.php")) $language = "english";
+include("../lang/{$language}.php");
 $lang = $PHORUM["DATA"]["LANG"]["mod_google_maps"];
 
 ?>
-<!DOCTYPE html>
-<html>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
   <head>
-    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
-    <meta name="viewport" content="initial-scale=1.0, user-scalable=no" />
-    <style type="text/css">
-      html { height: 100% }
-      body { height: 100%; margin: 0px; padding: 0px }
-      #map { height: 100%; width: 100%; }
-    </style>
+    <meta http-equiv="content-type" content="text/html; charset=<?php print htmlspecialchars($args["charset"]) ?>"/>
     <title>Google Map interface</title>
-    <script type="text/javascript" src="http://maps.google.com/maps/api/js?sensor=false&region=<?php print $lang['geocoding_lang'] ?>"></script>
-    <script type="text/javascript" src="<?php print $PHORUM['http_path'] ?>/mods/google_maps/maptool/fluster/lib/Fluster2.packed.js"></script>
+    <script src="http://maps.google.com/maps?file=api&amp;v=2&amp;key=<?php htmlspecialchars(print $args["api_key"]) ?>" type="text/javascript"></script>
 
     <script type="text/javascript">
     //<![CDATA[
@@ -76,291 +178,271 @@ $lang = $PHORUM["DATA"]["LANG"]["mod_google_maps"];
     // Initialize variables
     // -----------------------------------------------------------------
 
-    var api_language = '<?php print addslashes($lang['geocoding_lang']) ?>';
-
+    // Object storage.
+<?php if ($args["mode"] == 'edit') { ?>
+    var geocoder;
+  <?php if ($args["edittype"] == 'marker') { ?>
     var marker = null;
-
-    var geoloc_city    = '<?php print addslashes($args['geoloc_city']) ?>';
-    var geoloc_country = '<?php print addslashes($args['geoloc_country']) ?>';
-
-    <?php if ($args['type'] == 'location-editor' ||
-              $args['type'] == 'map-editor') { ?>
-    var reset_state =
-    {
-        map_latitude         : <?php print addslashes($args['reset_latitude']) ?>,
-        map_longitude        : <?php print addslashes($args['reset_longitude']) ?>,
-        map_zoom             : <?php print addslashes($args['reset_zoom']) ?>,
-        map_type             : '<?php print addslashes($args['reset_type']) ?>'
-    };
+  <?php } ?>
 <?php } ?>
-    var start_state =
-    {
-        <?php if (isset($args['map_latitude']) &&
-                        $args['map_latitude'] !== '') { ?>
-        map_latitude         : <?php print addslashes($args['map_latitude']) ?>,
-        map_longitude        : <?php print addslashes($args['map_longitude']) ?>,
-        map_zoom             : <?php print addslashes($args['map_zoom']) ?>,
-        map_type             : '<?php print addslashes($args['map_type']) ?>',
-        <?php } ?>
 
-        <?php if (isset($args['marker_latitude']) &&
-                        $args['marker_latitude'] !== '') { ?>
-        marker_latitude      : <?php print addslashes($args['marker_latitude']) ?>,
-        marker_longitude     : <?php print addslashes($args['marker_longitude']) ?>,
-        <?php } ?>
+<?php if ($args["marker"] != '') { ?> 
+    var start_marker = new GLatLng<?php print $args["marker"] ?>;
+<?php } else { ?>
+    var start_marker = null;
+<?php } ?>
 
-        <?php if (isset($args['streetview_latitude']) &&
-                        $args['streetview_latitude'] !== '') { ?>
-        streetview_latitude  : <?php print addslashes($args['streetview_latitude']) ?>,
-        streetview_longitude : <?php print addslashes($args['streetview_longitude']) ?>,
-        streetview_zoom      : <?php print addslashes($args['streetview_zoom']) ?>,
-        streetview_heading   : <?php print addslashes($args['streetview_heading']) ?>,
-        streetview_pitch     : <?php print addslashes($args['streetview_pitch']) ?>
-        <?php } ?>
-    };
+    var map;
 
-<?php if ($args["type"] == 'plotter') { ?>
-    var bounds = new google.maps.LatLngBounds();
+    var start_is_reset = <?php print $start_is_reset ? 'true' : 'false' ?>;
 
-    var ploticon = new google.maps.MarkerImage(
-        "<?php print htmlspecialchars($PHORUM["http_path"]) .
-                     "/mods/google_maps/maptool/marker.png" ?>",
-        new google.maps.Size(32, 32),  // size
-        new google.maps.Point(0, 0),   // origin
-        new google.maps.Point(16, 16), // anchor
-        new google.maps.Size(32, 32)   // scaled size
-    );
+    var start_point = new GLatLng<?php print $args["center"] ?>;
+    var start_zoom  = <?php print $args["zoom"] ?> 
+    var start_type  = <?php print $args["type"]; ?>;
 
+<?php if ($args["mode"] == 'view' && $args["viewtype"] == 'plot') { ?>
+    var bounds = new GLatLngBounds();
+
+    var mgr;
+    var markers;
+
+    var ploticon = new GIcon();
+        ploticon.image            = "<?php print htmlspecialchars($args["phorum_url"])."/mods/google_maps/maptool/icons/marker.png"?>";
+        ploticon.shadow            = "<?php print htmlspecialchars($args["phorum_url"])."/mods/google_maps/maptool/icons/marker_shadow.png"?>";
+        ploticon.iconSize         = new GSize(32,32);
+        ploticon.iconAnchor       = new GPoint(16,16);
+        ploticon.infoWindowAnchor = new GPoint(32,16);
+<?php } ?>
+
+<?php if ($args["mode"] == 'edit') { ?>
+    var reset_point = new GLatLng<?php print $args["dcenter"] ?>;
+    var reset_zoom  = <?php print $args["dzoom"] ?> 
+    var reset_type  = <?php print $args["dtype"]; ?>;
 <?php } ?>
 
     // -----------------------------------------------------------------
     // Initialize the Google Map
     // -----------------------------------------------------------------
 
-    var map;
-    var streetview;
-<?php if ($args["type"] == 'plotter') { ?>
-    var fluster
-<?php } ?>
-
-    function initialize()
+    function load()
     {
-      // Create the map object.
-      map = new google.maps.Map(document.getElementById("map"), {
-          <?php if ($args["type"] == 'map-editor') { ?>
-          streetViewControl : false,
-          <?php } ?>
-          zoom      : 1,
-          center    : new google.maps.LatLng(40, -20),
-          mapTypeId : google.maps.MapTypeId.ROADMAP,
-      });
+      if (GBrowserIsCompatible())
+      {
+        // Create the map object.
+        map = new GMap2(document.getElementById("map"));
+        map.setCenter(start_point, start_zoom);
 
-      <?php if ($args["type"] == 'plotter') { ?>
-      fluster = new Fluster2(map);
-      fluster.gridSize = 20;
-      <?php } ?>
+        // Add map controls.
+        map.addControl(new GSmallMapControl());
+        map.addControl(new GMapTypeControl());
+        map.addControl(new GScaleControl());
 
-      // Fetch the streetview object for this map.
-      streetview = map.getStreetView();
-
-      // Initialize the start position of the map.
-      startMap();
-
-<?php if ($args["type"] == 'location-editor' ||
-          $args['type'] == 'map-editor') { ?>
-      // Setup events for keeping track of edit operations.
-      google.maps.event.addListener(map, 'zoom_changed', function () {
-          raiseMapToolChangeEvent();
-      });
-      google.maps.event.addListener(map, 'dragend', function () {
-          raiseMapToolChangeEvent();
-      });
-      google.maps.event.addListener(map, 'maptypeid_changed', function () {
-          raiseMapToolChangeEvent();
-      });
-      google.maps.event.addListener(streetview, 'visible_changed', function () {
-          raiseMapToolChangeEvent();
-      });
-      google.maps.event.addListener(streetview, 'pano_changed', function () {
-          raiseMapToolChangeEvent();
-      });
-      google.maps.event.addListener(streetview, 'position_changed', function () {
-          raiseMapToolChangeEvent();
-      });
-      google.maps.event.addListener(streetview, 'pov_changed', function () {
-          raiseMapToolChangeEvent();
-      });
-  <?php if ($args['type'] == 'location-editor') { ?>
-      google.maps.event.addListener(map, 'click', function (ev) {
-          placeEditMarker(ev.latLng);
-          lookupGeolocationInfo(ev.latLng);
-          raiseMapToolChangeEvent();
-      });
-  <?php } ?>
+<?php if ($args["mode"] == 'view' && $args["viewtype"] == 'plot') { ?>
+        // Create marker manager for plotting on the map.
+        mgr = new GMarkerManager(map);
 <?php } ?>
-      raiseGoogleMapReadyEvent();
+
+<?php if ($args["mode"] == 'edit') { ?>
+        // Create the geocoder object.
+        geocoder = new GClientGeocoder();
+<?php } ?>
+
+<?php if ($args["mode"] != 'edit') { ?>
+        // Enable doubleclick for zooming to the next level.
+        map.enableDoubleClickZoom();
+<?php } ?>
+
+        // Move to the start location.
+        startMap();
+
+<?php if ($args["mode"] == 'edit') { ?>
+        // Setup event handlers.
+        GEvent.addListener(map, "moveend", function() {
+            raiseMapToolChangeEvent();
+        });
+        GEvent.addListener(map, "zoomend", function() {
+            raiseMapToolChangeEvent();
+        });
+        GEvent.addListener(map, "maptypechanged", function() {
+            raiseMapToolChangeEvent();
+        });
+    <?php if ($args["edittype"] == 'marker') { ?>
+        // If the user clicks the map, then move or place the marker.
+        GEvent.addListener(map, "click", function(overlay, point) {
+            placeEditMarker(point);
+            raiseMapToolChangeEvent();
+        });
+    <?php } ?>
+<?php } ?>
+
+        raiseGoogleMapReadyEvent();
+      } else {
+          document.write('<div style="border: 1px solid red; padding: 10px">');
+          document.write("<?php print $lang["IncompatibleBrowser"] ?>");
+          document.write('</div>');
+      }
     }
 
     // -----------------------------------------------------------------
     // Functions for changing the state of the map
     // -----------------------------------------------------------------
 
+    // Set the map to the given type. The type is the string as
+    // return by map.getCurrentMapType().
+    function setMapType(type)
+    {
+        var types = map.getMapTypes();
+        for (var i = 0; types[i]; i++) {
+          if (types[i].getName() == type.getName()) {
+            map.setMapType(types[i]);
+            break;
+          }
+        }
+    }
+
+    // Get the map type as a normalized value which we can use
+    // to store the map state. We have to do this, because the 
+    // map name can differ because of Google's localization.
+    function getMapType()
+    {
+        var type  = map.getCurrentMapType();
+
+        if (type.getName() == G_SATELLITE_MAP.getName()) {
+            return "satellite";
+        } else if (type.getName() == G_HYBRID_MAP.getName()) {
+            return "hybrid";
+        } else {
+            return "normal";
+        }
+    }
+
+    // Put a marker on the map, based on coordinates.
+    function placeMarkerAtCoordinates(lat,lng,info)
+    {
+        var p = new GLatLng(lat, lng);
+        return placeMarker(p, info);
+    }
+
+    // Put a marker on the map, based on a GLatLng point object.
+    function placeMarker(point, info) {
+
+<?php if ($args["mode"] == 'view' && $args["viewtype"] == 'plot') { ?>
+        bounds.extend(point);
+        var m = new GMarker(point, ploticon);
+<?php } else { ?>
+        var m = new GMarker(point);
+<?php } ?>
+
+        if (info) {
+            GEvent.addListener(m, "click", function() {
+               m.openInfoWindowHtml(info);
+            });
+        }
+
+        map.addOverlay(m);
+        return m;
+    }
+
     // Go to the map start position.
     function startMap()
     {
-        <?php if ($args['type'] == 'location-editor' ||
-                  $args['type'] == 'map-editor') { ?>
-        setMapState(reset_state);
+        map.setCenter(start_point, start_zoom);
+        setMapType(start_type);
+        <?php if ($args["mode"] == "edit") { ?>
+        if (start_marker) placeEditMarker(start_marker);
+        <?php } else { ?>
+        if (start_marker) placeMarker(start_marker);
         <?php } ?>
-        setMapState(start_state);
+
+        // Make sure the marker start position is visible.
+        if (start_marker && !map.getBounds().contains(start_marker)) {
+            map.panTo(start_marker);
+        }
+
+<?php if ($args["mode"] == 'edit') { ?>
+        raiseMapToolChangeEvent(start_is_reset);
+<?php } ?>
     }
 
-    <?php if ($args['type'] == 'location-editor' ||
-              $args['type'] == 'map-editor') { ?>
     // Go to the map reset position.
     function resetMap()
     {
-        setMapState(reset_state);
-        geoloc_city    = null;
-        geoloc_country = null;
+<?php if ($args["mode"] == 'edit' && $args["edittype"] == 'marker') { ?>
+        if (marker) {
+            map.removeOverlay(marker);
+            marker = null;
+        }
+<?php } ?>
+        map.setCenter(reset_point, reset_zoom);
+        setMapType(reset_type);
+
         raiseMapToolChangeEvent(true);
     }
-    <?php } ?>
 
-<?php if ($args['type'] == 'location-editor' ||
-          $args['type'] == 'map-editor') { ?>
+<?php if ($args["mode"] == 'edit') { ?>
     // Search for a textual location on the map, using Google's
     // geocoder to translate the text into map coordinates.
     function searchLocation(description)
     {
-        setLoading(true);
-        var geocoder = new google.maps.Geocoder();
-        geocoder.geocode({
-            address  : description,
-            language : api_language
-        }, function(result, status) {
-            setLoading(false);
-            if (status != google.maps.GeocoderStatus.OK) {
-                alert(document.getElementById('maptool_msg_notfound').innerHTML);
-            } else {
-                var point = result[0].geometry.location;
-                map.panTo(point);
-                streetview.setVisible(false);
-                <?php if ($args["type"] == 'location-editor') { ?>
-                placeEditMarker(point);
-                lookupGeolocationInfo(point);
-                <?php } ?>
-                raiseMapToolChangeEvent();
-            }
+        geocoder.getLatLng(description, function(point) {
+          if (! point) {
+            alert('<?php print ($lang["NoSearchResults"].$lang["HelpText"]) ?>');
+          } else {
+            map.panTo(point);
+  <?php if ($args["edittype"] == 'marker') { ?>
+            placeEditMarker(point);
+  <?php } ?>
+            raiseMapToolChangeEvent();
+          }
         });
-        return false;
     }
 
-  <?php if ($args["type"] == 'location-editor') { ?>
+  <?php if ($args["edittype"] == 'marker') { ?>
     // Put an editable marker on the map.
     function placeEditMarker(point)
     {
         // Create a marker in case there is no marker yet.
         if (! marker)
         {
-            marker = new google.maps.Marker({
-                position  : point,
-                map       : map,
-                draggable : true
-            });
+            marker = new GMarker(point, {draggable: true});
 
             // If the user drags the marker, then fire a change event.
-            google.maps.event.addListener(marker, 'dragend', function () {
+            GEvent.addListener(marker, "dragend", function() {
                 raiseMapToolChangeEvent();
-                lookupGeolocationInfo(marker.getPosition());
             });
+
+            map.addOverlay(marker);
         }
         // If we already have a marker, then move it to the new location.
-        else {
-            marker.setPosition(point);
+        else
+        {
+            marker.setPoint(point);
         }
-
-        raiseMapToolChangeEvent();
-    }
-
-    function lookupGeolocationInfo(point)
-    {
-        geoloc_city = null;
-        geoloc_country = null;
-
-        var geocoder = new google.maps.Geocoder();
-        geocoder.geocode({
-            location : point,
-            language : api_language
-        }, function(result, status) {
-            if (status === google.maps.GeocoderStatus.OK)
-            {
-                for (var i = 0; i < result.length; i++)
-                {
-                    var set = result[i];
-                    for (var j = 0; j < set.address_components.length; j++)
-                    {
-                        var comp  = set.address_components[j];
-                        for (var k = 0; k < comp.types.length; k++)
-                        {
-                            if (comp.types[k] === 'country') {
-                              geoloc_country = comp.long_name;
-                              break;
-                            } else if (comp.types[k] === 'locality') {
-                              geoloc_city    = comp.long_name;
-                              break;
-                            }
-                        }
-
-                        if (geoloc_country && geoloc_city) break;
-                    }
-                    if (geoloc_country && geoloc_city) break;
-                }
-
-                raiseMapToolChangeEvent();
-            }
-        });
     }
   <?php } ?>
 <?php } ?>
 
-<?php if ($args['type'] === 'plotter' || $args['type'] === 'viewer') { ?>
-    // The active infowindow.
-    var info_window = null;
-
-    // Put a view marker on the map.
-    function placeViewMarker(point, info)
+<?php if ($args["mode"] == 'view' && $args["viewtype"] == 'plot') { ?>
+    function placePlotMarker(lat, lng, info)
     {
-        // Create the marker.
-        var marker = new google.maps.Marker({
-            position  : point,
-            <?php if ($args['type'] !== 'plotter') { ?>
-            map       : map,
-            <?php } ?>
-            <?php if ($args['type'] === 'plotter') { ?>
-            icon      : ploticon,
-            flat      : true,
-            <?php } ?>
-            draggable : false
-        });
+        var p = new GLatLng(lat, lng);
+        var newm = new GMarker(p, ploticon);
 
-        <?php if ($args['type'] === 'plotter') { ?>
-        fluster.addMarker(marker);
-        <?php } ?>
-
-        // If info is provided, then setup an info window for the marker.
         if (info) {
-            google.maps.event.addListener(marker, 'click', function () {
-                if (info_window) {
-                    info_window.close();
-                }
-                info_window = new google.maps.InfoWindow({
-                    content     : info,
-                    pixelOffset : new google.maps.Size(0, 16)
-                });
-                info_window.open(map, marker); 
+            GEvent.addListener(newm, "click", function() {
+                newm.openInfoWindowHtml(info);
             });
         }
+
+        return newm;
+    }
+
+    function fitPlotPoints()
+    {
+        map.setCenter(bounds.getCenter());
+        var zoomlevel = map.getBoundsZoomLevel(bounds);
+        if (zoomlevel > 2) zoomlevel --;
+        map.setZoom(zoomlevel);
     }
 <?php } ?>
 
@@ -370,265 +452,89 @@ $lang = $PHORUM["DATA"]["LANG"]["mod_google_maps"];
 
     function raiseGoogleMapReadyEvent()
     {
+<?php if ($args["mode"] == 'view' && $args["viewtype"] == 'plot') { ?>
+        // First see if our parent provides markers to plot. If yes,
+        // then place them on the map.
+        if (parent.markers)
+        {
+            var e = null;
+            var w = null;
+            var n = null;
+            var s = null;
+
+            var i = 0;
+            markers = new Array();
+            for (var i = 0; parent.markers[i]; i++)
+            {
+                var m = parent.markers[i];
+                // Keep track of the bounds.
+                if (n == null || n < m[1]) n = m[1];
+                if (e == null || e < m[0]) e = m[0];
+                if (s == null || s > m[1]) s = m[1];
+                if (w == null || w > m[0]) w = m[0];
+
+                // Create the marker object.
+                markers[i] = placePlotMarker(m[0], m[1], m[2]);
+            }
+
+            // Compute and set map center and zoom level.
+            var bounds = new GLatLngBounds(new GLatLng(w,s), new GLatLng(e,n));
+            var zoomlevel = map.getBoundsZoomLevel(bounds);
+            map.setCenter(bounds.getCenter(), zoomlevel);
+
+            // Display the markers.
+            mgr.addMarkers(markers, 1);
+            mgr.refresh();
+        }
+<?php } ?>
+
         // Callback to notify the parent that the map is ready.
         if (parent.onGoogleMapReady) {
-            parent.onGoogleMapReady(window, map);
+            parent.onGoogleMapReady(map);
         }
     }
 
-    /**
-     * Retrieve the current map state.
-     *
-     * @return object
-     *   An object, describing the current state of the map.
-     *   This object can be passed to setMapState() to restore
-     *   the map state.
-     */
-    function getMapState()
+<?php if ($args["mode"] == 'edit') { ?>
+
+    // A simple object to store state information.
+    function GoogleMapState()
     {
-        var state = { };
-
-        // Compile map state.
-        var center = map.getCenter();
-        state.map_latitude   = center.lat();
-        state.map_longitude  = center.lng();
-        state.map_zoom       = map.getZoom();
-        state.map_type       = map.getMapTypeId();
-
-        // Compile streetview state.
-        var sv_pos = streetview.getPosition();
-        var sv_pov = streetview.getPov();
-        if (streetview.getVisible()) {
-            state.streetview_latitude   = sv_pos ? sv_pos.lat()   : null,
-            state.streetview_longitude  = sv_pos ? sv_pos.lng()   : null,
-            state.streetview_heading    = sv_pos ? sv_pov.heading : null,
-            state.streetview_pitch      = sv_pos ? sv_pov.pitch   : null,
-            state.streetview_zoom       = sv_pos ? sv_pov.zoom    : null
-        } else {
-            state.streetview_latitude   = null,
-            state.streetview_longitude  = null,
-            state.streetview_heading    = null,
-            state.streetview_pitch      = null,
-            state.streetview_zoom       = null
-        }
-
-        // Compile marker state.
-        var marker_pos = marker ? marker.getPosition() : null;
-        if (marker && marker_pos) {
-            state.marker_latitude   = marker_pos.lat(),
-            state.marker_longitude  = marker_pos.lng()
-        } else {
-            state.marker_latitude   = null,
-            state.marker_longitude  = null
-        }
-
-        // Compile geolocation info state.
-        state.geoloc_country = geoloc_country;
-        state.geoloc_city    = geoloc_city;
-
-        return state;
+        this.center   = null;
+        this.zoom     = null;
+        this.type     = null;
+        this.marker   = null;
     }
 
-    /**
-     * Set the map state.
-     *
-     * @param object
-     *   An object, describing the current state of the map.
-     *   This is an object, as created by getMapState().
-     */
-    function setMapState(state)
-    {
-        // Keep track of the point that we want to be visible in the map.
-        var focus_point = null;
-
-        // Set the map type.
-        var type = state.map_type;
-        if (state.map_type !== null && state.map_type !== undefined) {
-            // backward compatibility
-            if (state.map_type === 'normal') state.map_type = 'roadmap';
-
-            map.setMapTypeId(state.map_type);
-        }
-
-        // Set the map center.
-        if (state.map_latitude  !== null      &&
-            state.map_latitude  !== undefined &&
-            state.map_longitude !== null      &&
-            state.map_longitude !== undefined) {
-            var center = new google.maps.LatLng(
-                state.map_latitude, state.map_longitude);
-            map.setCenter(center);
-        }
-        focus_point = map.getCenter();
-
-        // Set the map zoom.
-        if (state.map_zoom !== null && state.map_zoom !== undefined) {
-            map.setZoom(state.map_zoom);
-        }
-
-        // Set the marker state.
-        if (state.marker_latitude  !== null      &&
-            state.marker_latitude  !== undefined &&
-            state.marker_longitude !== null      &&
-            state.marker_longitude !== undefined)
-        {
-            <?php if ($args["type"] == 'location-editor') { ?>
-            var point = new google.maps.LatLng(
-                state.marker_latitude, state.marker_longitude);
-            placeEditMarker(point);
-            <?php } ?>
-
-            <?php if ($args["type"] == 'viewer') { ?>
-            var point = new google.maps.LatLng(
-                state.marker_latitude, state.marker_longitude);
-            placeViewMarker(point);
-            <?php } ?>
-
-            focus_point = point;
-        }
-        else if (marker) {
-            marker.setMap(null);
-            marker = null;
-        }
-
-        // Set the streetview state.
-        if (state.streetview_latitude  !== null      && 
-            state.streetview_latitude  !== undefined && 
-            state.streetview_longitude !== null      && 
-            state.streetview_longitude !== undefined && 
-            state.streetview_pitch     !== null      && 
-            state.streetview_pitch     !== undefined && 
-            state.streetview_heading   !== null      && 
-            state.streetview_heading   !== undefined && 
-            state.streetview_zoom      !== null      && 
-            state.streetview_zoom      !== undefined)
-        {
-            streetview.setPosition(new google.maps.LatLng(
-                state.streetview_latitude,
-                state.streetview_longitude
-            ));
-            streetview.setPov({
-                heading    : state.streetview_heading,
-                pitch      : state.streetview_pitch,
-                zoom       : state.streetview_zoom
-            });
-            streetview.setVisible(true);
-        }
-        else {
-            streetview.setVisible(false);
-        }
-
-        // Make sure the focus point's position is visible.
-        var bounds = map.getBounds();
-        if (focus_point && bounds && bounds.contains(focus_point)) {
-            map.panTo(focus_point);
-        }
-    }
-
-<?php if ($args['type'] == 'location-editor' ||
-          $args['type'] == 'map-editor') { ?>
     // Callback to the parent window.
     function raiseMapToolChangeEvent(reset)
     {
         if (parent.onMapToolChange) {
-            parent.onMapToolChange(getMapState());
-        };
-    }
-<?php } ?>
-
-<?php if ($args['type'] == 'location-editor' ||
-          $args['type'] == 'map-editor') { ?>
-    function geoLocationSupported()
-    {
-        if (navigator.geolocation) return true;
-        if (google.gears) return true;
-        return false;
-    }
-
-    function doGeoLocationCallback(point)
-    {
-        setLoading(false);
-        if (!point) {
-            alert(document.getElementById('maptool_msg_notfound').innerHTML);
-        } else {
-            map.panTo(point);
-            streetview.setVisible(false);
-            <?php if ($args["type"] == 'location-editor') { ?>
-            placeEditMarker(point);
-            lookupGeolocationInfo(point);
-            <?php } ?>
-            raiseMapToolChangeEvent();
-        }
-    }
-
-    function doGeoLocation()
-    {
-        // Try W3C Geolocation (Preferred)
-        if (navigator.geolocation)
-        {
-            setLoading(true);
-            navigator.geolocation.getCurrentPosition(function(position) {
-                setLoading(false);
-                var point = new google.maps.LatLng(
-                    position.coords.latitude,
-                    position.coords.longitude
-                );
-                doGeoLocationCallback(point);
-            }, function() {
-                setLoading(false);
-                doGeoLocationCallback(null);
-            });
-        }
-        // Try Google Gears Geolocation
-        else if (google.gears)
-        {
-            setLoading(true);
-            var geo = google.gears.factory.create('beta.geolocation');
-            geo.getCurrentPosition(function(position) {
-                setLoading(false);
-                var point = new google.maps.LatLng(
-                    position.latitude,
-                    position.longitude
-                );
-                doGeoLocationCallback(point);
-            }, function () {
-                setLoading(false);
-                doGeoLocationCallback(null);
-            });
-        }
-        else {
-            doGeoLocationCallback(null);
-        }
-    }
-
-    // A loading mask with some timers to prevent it from becoming
-    // too flashy (as in "flashing".)
-    var loading_timer = null;
-    function setLoading(state)
-    {
-        if (loading_timer) {
-          clearTimeout(loading_timer);
-          loading_timer = null;
-        }
-
-        var overlay = document.getElementById('loading_overlay');
-        if (state) {
-            loading_timer = setTimeout(function () {
-              overlay.style.display = 'block';
-            }, 500);
-        } else {
-            loading_timer = setTimeout(function () {
-              overlay.style.display = 'none';
-            }, 500);
+            var state = new GoogleMapState();
+            if (reset) {
+                state.center   = '';
+                state.marker   = '';
+                state.zoom     = '';
+                state.type     = '';
+            } else {
+                state.center   = map.getCenter();
+                <?php if ($args["edittype"] == 'marker') { ?>
+                    state.marker   = marker ? marker.getPoint() : '';
+                <?php } else { ?>
+                    state.marker   = '';
+                <?php } ?>
+                state.zoom     = map.getZoom();
+                state.type     = getMapType();
+            }
+            parent.onMapToolChange(state);
+            state = null;
         }
     }
 <?php } ?>
-
     //]]>
     </script>
   </head>
 
-  <body onload="initialize()">
+  <body onload="load()" onunload="GUnload()">
 
     <noscript>
       <div style="border: 1px solid red; padding: 10px">
@@ -636,22 +542,10 @@ $lang = $PHORUM["DATA"]["LANG"]["mod_google_maps"];
       </div>
     </noscript>
 
-    <span id="maptool_msg_notfound" style="display:none">
-      <?php print $lang["NoSearchResults"] ?>
-    </span>
+    <div id="map" style="
+        width: <?php print htmlspecialchars($args["width"]) ?>;
+        height: <?php print htmlspecialchars($args["height"]) ?>"></div>
 
-    <div id="map"></div>
-
-    <div id="loading_overlay"
-         style="position: absolute;
-                display: none;
-                top: 0;
-                left: 0;
-                bottom: 0;
-                right: 0;
-                opacity: 0.20;
-                filter: progid:DXImageTransform.Microsoft.Alpha(opacity=20);
-                background: #000 url(<?php print $PHORUM["http_path"] ?>/mods/google_maps/maptool/loader.gif) center center no-repeat"></div>
   </body>
 
 </html>

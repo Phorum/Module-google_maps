@@ -1,5 +1,5 @@
-Module  : Google Maps Module
-Version : 2.0.5
+Module  : Google Maps Module 
+Version : 1.0.6
 Author  : Maurice Makaay <maurice@phorum.org>
 
 This module implements Google Maps functionality in the user profile.
@@ -8,28 +8,30 @@ location can be displayed to others on the profile viewing screen.
 
 The module can also be used to plot all known user locations on a map.
 You will have to create a link to this user map yourself. See "Customization"
-below for information on how to link to this user map.
+below for information on how to link to the user map.
 
-For running this mod, you need Phorum 5.2.0 or later. It will not
-work for earlier versions of Phorum.
+For running this mod, you need Phorum 5.1.16 or later. It will not
+work for earlier versions of Phorum. 
 
 
 Contents:
 1. Install
 2. Upgrade
- 2.1 From a version, prior to 2.0.4
- 2.2 From a version, prior to 2.0.0
 3. Customization
  3.1 Module templates
  3.2 User control center
  3.3 User profile screen
- 3.4 Message read pages
+ 3.4 Styling of the maps
  3.5 Width and heights of the maps
  3.6 Linking to the user map
 
 
 1. Install
 ----------
+
+- Register for a Google Maps API key (it's free) at
+  http://www.google.com/apis/maps/
+  You will need this key later on in the installation;
 
 - Unpack the archive;
 
@@ -41,39 +43,27 @@ Contents:
 
 - Enable the module "Google Maps".
 
-- Configure the module through the module's settings page.
+- Configure the module through the module's settings page. Enter at
+  least the API key that you have registered in the first step of
+  the installation.
 
 
 2. Upgrade
 ----------
 
- 2.1 From a version, prior to 2.0.4
- ----------------------------------
+The recommended way for upgrading from versions prior to 1.0.2 is:
 
-  Please note that some new files have been added to the module template
-  directory mods/google_maps/templates/emerald/. If you did not create a
-  custom template directory next to that emerald directory, then you are fine.
-  If you did create a custom template however, you will have to make sure
-  that your custom template contains all templates from the emerald directory
-  (by simply copying over the missing files).
+- Login as administrator in Phorum's administrative interface and
+  go to the "Modules" section;
 
+- Disable the module "Google Maps".
 
- 2.2 From a version, prior to 2.0.0
- ----------------------------------
+- Delete the directory "mods/google_maps" within your Phorum installation
+  (but keep of course customized template files if you have those).
 
-  The recommended way for upgrading from versions prior to 2.0.0 is:
+- Move the new "google_maps" directory to the "mods" directory.
 
-  - Login as administrator in Phorum's administrative interface and
-    go to the "Modules" section;
-
-  - Disable the module "Google Maps".
-
-  - Delete the directory "mods/google_maps" within your Phorum installation
-    (but keep of course customized template files if you have those).
-
-  - Move the new "google_maps" directory to the "mods" directory.
-
-  - Go to the Modules administration and enable the module "Google Maps".
+- Go to the Modules administration and enable the module "Google Maps".
 
 
 3. Customization
@@ -85,7 +75,7 @@ Contents:
   This module makes use of module templates. If you want to modify the
   templates to make them work better for your site's template, then do
   not edit the template files that were in the module distribution.
-  Instead, copy the full directory "mods/google_maps/templates/default" to
+  Instead, copy the full directory "mods/google_maps/templates/default" to 
   "mods/google_maps/templates/yourtemplatename" (asuming that your site's
   template is stored as "templates/yourtemplatename") and edit the files
   in the new directory. Phorum will automatically recognize that you have
@@ -95,22 +85,22 @@ Contents:
  -----------------------
 
   By default, the module will add the Google map editor to the user
-  profile screen on the "Edit My Profile" page. In case you want to
+  profile screen on the "Edit My Profile" page. In case you want to 
   fully customize where and how the map is shown inside the control center,
   you can disable automatic displaying of the map tool through the module
   settings. After that, you can edit your "cc_usersettings.tpl" template
-  file and use the special template variable {MOD_GOOGLE_MAPS} for
+  file and use the special template variable {MOD_GOOGLE_MAPS} for 
   displaying the map where you want it to appear.
 
   Here's an example of what could be added to the cc_usersettings.tpl:
 
   {IF PROFILE->USERPROFILE}
-    <dt>{LANG->mod_google_maps->CCIntroduction}</dt>
-    <dd>
-      <div style="height:400px">
+    <tr>
+      <td colspan="2">
+        {LANG->mod_google_maps->CCIntroduction}<br/>
         {MOD_GOOGLE_MAPS}
-      </div>
-    </dd>
+      </td>
+    </tr>
   {/IF}
 
  3.3 User profile screen
@@ -118,13 +108,13 @@ Contents:
 
   By default, the module will add the Google map for the user to the bottom
   of the profile page. In case you want to fully customize the way in which
-  the map is displayed on the profile page, you can disable automatic
+  the map is displayed on the profile page, you can disable automatic 
   displaying of the map through the module settings. After that, you can edit
   your "profile.tpl" template file and use the special template variable
   {MOD_GOOGLE_MAPS} to display the map where you want it to appear. For users
   that did not configure their location through the control center, the
-  {MOD_GOOGLE_MAPS} variable will not be set.
-
+  {MOD_GOOGLE_MAPS} variable will not be set. 
+  
   Here's an example of what could be added to the profile.tpl:
 
   {IF MOD_GOOGLE_MAPS}
@@ -135,63 +125,55 @@ Contents:
       <td width="100%" valign="top" style="padding-top: 10px">
         In the map below, you can see where I am.<br/>
         <br/>
-        <div style="height:400px">
-          {MOD_GOOGLE_MAPS}
-        </div>
+        {MOD_GOOGLE_MAPS}
       </td>
     </tr>
   {/IF}
 
-  When the user has stored his position while the module configuration option
-  "Retrieve city and country on saving" was enabled, then the country
-  and the city name will be available in the profile data. Code for adding
-  this info to the profile page could look like this:
+ 3.4 Styling of the maps
+ -----------------------
 
-  {IF PROFILE->mod_google_maps->city}
-    {PROFILE->mod_google_maps->country},
-    {PROFILE->mod_google_maps->city}
-  {/IF}
+  Styling of the maps can be done through CSS.
+  The following div id's are defined in the code:
 
-  Here's an example that works well with the Emerald template:
-
-  {IF PROFILE->mod_google_maps->city}
-    <dt>{LANG->mod_google_maps->Location}:</dt>
-    <dd>
-      {PROFILE->mod_google_maps->city},
-      {PROFILE->mod_google_maps->country}
-    </dd>
-  {/IF}
-
- 3.4 Message read pages
- ----------------------
-
-  When the user has stored his position while the module configuration option
-  "Retrieve city and country on saving" was enabled, then the country
-  and the city name will be available in the message data. Code for adding
-  this info to the read pages could look like this:
-
-  {IF MESSAGES->user->city}
-    {MESSAGES->user->country},
-    {MESSAGES->user->city}
-  {/IF}
-
-  (note that for read.tpl and read_hybrid.tpl you must use {MESSAGES->...},
-  while for read_threads.tpl you must use {MESSAGE->...} instead.
+  #maptool           A surrounding div around each map
+  #maptool_topbar    Only for edit mode; containing Search location and Help
+  #maptool_map       A surrounding div around the google map iframe
+  #maptool_bottombar Only for edit mode; containing location and Unset position
 
  3.5 Width and heights of the maps
  ---------------------------------
 
-  If you want to influence the width and height of a displayed map, then
-  wrap it in a <div> that limits the size. For example:
+  For each template, you can tweak the map widths and heights in the 
+  user control center and profile screen. This can be done by setting
+  the template variables cc_width, cc_height, profile_width and profile_height
+  in settings.tpl (mods/google_maps/templates/yourtemplate/settings.tpl).
 
-  <div style="width: 300px; height: 200px">
-    {MOD_GOOGLE_MAPS}
-  </div>
+  In the settings.tpl files that are shipped with this module, pure PHP
+  code is used for defining them. That is done to make the module work
+  for both Phorum 5.1 and 5.2 (the development tree at time of writing).
+  For defining your own, I would recommend using the following syntax instead:
+
+  For Phorum 5.1:
+
+  {VAR cc_width 100%}
+  {VAR cc_height 350px}
+  {VAR control_width 100%}
+  {VAR control_height 350px}
+
+  For Phorum 5.2:
+
+  {VAR cc_width "100%"}
+  {VAR cc_height "350px"}
+  {VAR control_width "100%"}
+  {VAR control_height "350px"}
+
+  Beware: do not use percentual heights! Those will not work.
 
  3.6 Linking to the user map
  ---------------------------
 
-  For linking to the user map, the template variable
+  For linking to the user map, the template variable 
   {URL->MOD_GOOGLE_MAPS_USERMAP} can be used. So a basic link could
   be put in your templates like this:
 

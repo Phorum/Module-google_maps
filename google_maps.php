@@ -2,13 +2,19 @@
 
 if (!defined("PHORUM")) return;
 
-require_once './mods/google_maps/api.php';
-require_once './mods/google_maps/defaults.php';
+require_once("./mods/google_maps/defaults.php");
+require_once("./mods/google_maps/maptool/constants.php");
 
 // Hook: common
 function phorum_mod_google_maps_common()
 {
     global $PHORUM;
+
+    // Addons might need these for creating navigation.
+    phorum_build_common_urls();
+
+    // Load custom template settings.
+    include(phorum_get_template("google_maps::settings"));
 
     // Generate addon URL.
     $PHORUM["DATA"]["URL"]["MOD_GOOGLE_MAPS_USERMAP"] =
@@ -24,159 +30,131 @@ function phorum_mod_google_maps_common()
     }
 }
 
-// Hook: cc_menu_options_hook 
-// This hook will add a "Location" link to the control center menu.
-// This link will lead to a page where the user can configure his location.
-function phorum_mod_google_maps_cc_menu_options_hook()
+// Hook: after header
+// This hook is used to setup the template variable {MOD_GOOGLE_MAPS}
+// for displaying a Google Map on the page. It will prepare that variable
+// for the user control center and profile pages.
+function phorum_mod_google_maps_after_header()
+{
+    // We only need to create the map data for the profile and control center.
+    if (phorum_page != "profile" && phorum_page != "control")
+        return;
+
+    global $PHORUM;
+
+    $data = isset($PHORUM["DATA"]["mod_google_maps"])
+          ? $PHORUM["DATA"]["mod_google_maps"] : array();
+
+    // Setup the map configuration for the control center.
+    if (phorum_page == "control") {
+        $mapconf = isset($PHORUM["user"]["mod_google_maps"]) 
+                 ? $PHORUM["user"]["mod_google_maps"] : array();
+        $maptool = "editor.php";
+        $PHORUM["maptool"] = array(
+            "width"    => isset($data["cc_width"]) ? $data["cc_width"] : '',
+            "height"   => isset($data["cc_height"]) ? $data["cc_height"] : '',
+            "edittype" => "marker",
+        );
+    }
+
+    // Setup the map configuration for the user profile.
+    elseif (phorum_page == "profile") {
+        $mapconf = isset($PHORUM["DATA"]["PROFILE"]["mod_google_maps"]) 
+                 ? $PHORUM["DATA"]["PROFILE"]["mod_google_maps"] : array();
+        if (!isset($mapconf["marker"]) || 
+            !preg_match(REGEXP_LOCATION, $mapconf["marker"])) return;
+            
+        $maptool = "viewer.php";
+        $PHORUM["maptool"] = array(
+            "width"    => isset($data["profile_width"]) ? $data["profile_width"] : '',
+            "height"   => isset($data["profile_height"]) ? $data["profile_height"] : '',
+        );
+    }
+
+    // Merge the map state initialization parameters.
+    foreach (array("center", "marker", "type", "zoom") as $k) {
+        $PHORUM["maptool"][$k] = isset($mapconf[$k]) ? $mapconf[$k] : "";
+    }
+
+    // Grab the map code.
+    ob_start();
+    include("./mods/google_maps/maptool/{$maptool}");
+    $PHORUM["DATA"]["MOD_GOOGLE_MAPS"] = ob_get_contents();
+    ob_end_clean();
+}
+
+// Hook: tpl_cc_usersettings
+// This hook is used to dispay the Google map tool in the 
+// "Edit My Profile" section of the user control center.
+function phorum_mod_google_maps_tpl_cc_usersettings($page)
 {
     global $PHORUM;
 
-    // Generate the required template data for the control panel menu button.
-    if ($PHORUM["DATA"]["PROFILE"]["PANEL"] == 'location')
-        $PHORUM["DATA"]["LOCATION_PANEL_ACTIVE"] = TRUE;
-    $PHORUM["DATA"]["URL"]["CC_LOCATION"] =
-        phorum_get_url(PHORUM_CONTROLCENTER_URL, "panel=location");
+    // We only need to show the map editor on the "Edit my profile"
+    // control center panel and in case the admin didn't disable
+    // automatic displaying.
+    if (isset($page["PANEL"]) && $page["PANEL"] == "user" &&
+        $PHORUM["mod_google_maps"]["cc_auto_show"])
+        include(phorum_get_template("google_maps::controlcenter"));
 
-    // Show the menu button.
-    include phorum_get_template('google_maps::cc_menu_item');
+    return $page;
 }
 
-// Hook: cc_panel
-// This hook will setup the {MOD_GOOGLE_MAPS} template variable
-// that can be used to display the map editor in the control center.
-function phorum_mod_google_maps_cc_panel($data)
+// Hook: cc_save_user
+function phorum_mod_google_maps_cc_save_user($userdata)
 {
-    global $PHORUM;
-
-    // Check if we are on our custom "location" panel.
-    if ($data['panel'] != 'location') return $data;
-
-    // Check if map data was posted.
-    // If yes, then store the maptool's state in the user data.
-    if (isset($_POST['map_latitude']))
-    {
-        $PHORUM['user']['mod_google_maps'] =
-            mod_google_maps_filter_state_data($_POST);
-
-        phorum_api_user_save(array(
-            'user_id'         => $PHORUM['user']['user_id'],
-            'mod_google_maps' => $PHORUM['user']['mod_google_maps']
-        ));
-
-        $data['okmsg'] = $PHORUM["DATA"]["LANG"]["ProfileUpdatedOk"];
+    // Only save data on the user panel.
+    if (!isset($_POST["panel"]) || $_POST["panel"] != "user") {
+        return $userdata;
     }
 
-    // Retrieve the data for the active Phorum user.
-    $mapstate = empty($PHORUM["user"]["mod_google_maps"])
-              ? array() : $PHORUM["user"]["mod_google_maps"];
+    // Put the location setting in the user data.
+    if (isset($_POST["maptool_center"]) && preg_match(REGEXP_LOCATION, $_POST["maptool_center"])) { $userdata["mod_google_maps"]["center"] = $_POST["maptool_center"]; } else { $userdata["mod_google_maps"]["center"] = NULL; }
+    if (isset($_POST["maptool_marker"]) && preg_match(REGEXP_LOCATION, $_POST["maptool_marker"])) { $userdata["mod_google_maps"]["marker"] = $_POST["maptool_marker"]; } else { $userdata["mod_google_maps"]["marker"] = NULL; }
 
-    // Upgrade the user data if it looks like version 1 data.
-    if (isset($mapstate['marker'])) {
-        $mapstate = mod_google_maps_upgrade_userdata($mapstate);
-    }
+    // Put the zoom setting in the user data.
+    if (isset($_POST["maptool_zoom"]) && preg_match(REGEXP_ZOOM, $_POST["maptool_zoom"])) { $userdata["mod_google_maps"]["zoom"] = $_POST["maptool_zoom"]; } else { $userdata["mod_google_maps"]["zoom"] = NULL; }
 
-    // Build the HTML code for the map editor.
-    $PHORUM['DATA']['MOD_GOOGLE_MAPS'] =
-        mod_google_maps_build_maptool('location-editor', $mapstate);
+    // Put the type setting in the user data.
+    if (isset($_POST["maptool_type"]) && preg_match(REGEXP_TYPE, $_POST["maptool_type"])) { $userdata["mod_google_maps"]["type"] = $_POST["maptool_type"]; } else { $userdata["mod_google_maps"]["type"] = NULL; }
 
-    $PHORUM["DATA"]["URL"]["LOCATION_CONFIGURE"] = phorum_get_url(
-        PHORUM_CONTROLCENTER_URL, "panel=location"
-    );
-
-    $data['handled'] = TRUE;
-    $data['template'] = 'google_maps::cc_panel';
-
-    return $data;
+    return $userdata;
 }
 
-// Hook: profile
-// Setup the google map code for the user profile.
-function phorum_mod_google_maps_profile($profile)
-{
-    global $PHORUM;
-
-    $PHORUM['DATA']['MOD_GOOGLE_MAPS'] = '';
-
-    // Retrieve the data for the active Phorum user.
-    $mapstate = empty($profile['mod_google_maps'])
-              ? array() : $profile['mod_google_maps'];
-
-    // Upgrade the user data if it looks like version 1 data.
-    if (isset($mapstate['marker'])) {
-        $mapstate = mod_google_maps_upgrade_userdata($mapstate);
-    }
-
-    // Do not show a map if neither a marker, nor a streetview are available.
-    if (!isset($mapstate['marker_latitude']) &&
-        !isset($mapstate['streetview_latitude'])) return $profile;
-
-    // If a position is set in streetview, then copy that position to
-    // the marker position, so the marker and streetview will match
-    // when viewing the map.
-    if (isset($mapstate['streetview_latitude']) &&
-        isset($mapstate['streetview_longitude'])) {
-        $mapstate['marker_latitude'] = $mapstate['streetview_latitude'];
-        $mapstate['marker_longitude'] = $mapstate['streetview_longitude'];
-    }
-
-    // Build the HTML code for the map viewer.
-    $PHORUM['DATA']['MOD_GOOGLE_MAPS'] =
-        mod_google_maps_build_maptool('viewer', $mapstate);
-
-    // Format country and city for the profile page.
-    if (!empty($profile['mod_google_maps']))
-    {
-        $m = $profile['mod_google_maps'];
-        if (!empty($m['geoloc_country'])) {
-            $profile['mod_google_maps']['country'] = htmlspecialchars(
-                $m['geoloc_country'], ENT_COMPAT, $PHORUM["DATA"]["HCHARSET"]);
-        }
-        if (!empty($m['geoloc_city'])) {
-            $profile['mod_google_maps']['city'] = htmlspecialchars(
-                $m['geoloc_city'], ENT_COMPAT, $PHORUM["DATA"]["HCHARSET"]);
-        }
-    }
-
-    return $profile;
-}
-
-// Hook: before_footer_profile
-// This hook is used to display the map in the user profile,
+// Hook: before_footer
+// In this hook, we check if there is a JavaScript function 
+// mod_google_maps_cc_width_hack() in the page. If there is one,
+// then it is called. The function is in the JavaScript library
+// template "templates/<tplname>/javascript.tpl" and it is used
+// for doing a fix on the normal control center template, without
+// having to hack the template file for it.
+//
+// This hack was initially written to be able to set the width
+// of the table that contains the profile HTML fields to 95%.
+// Without it, the table would not expand and the map would be
+// as wide as the real name input field.
+// 
+// This hook is also used to display the map in the user profile,
 // unless the admin configured the module setting to not display
 // the map automatically in the profile.
-function phorum_mod_google_maps_before_footer_profile()
-{
+function phorum_mod_google_maps_before_footer()
+{ 
     global $PHORUM;
 
+    if (phorum_page == "control") { ?>
+        <script type="text/javascript">
+          if (window.mod_google_maps_cc_width_hack) {
+            mod_google_maps_cc_width_hack();
+          }
+        </script> <?php
+    }
+
+    // Show the map viewer on the user profile page in case the admin
+    // didn't disable automatic displaying.
     if (isset($PHORUM["DATA"]["MOD_GOOGLE_MAPS"]) &&
-        $PHORUM["mod_google_maps"]["profile_auto_show"]) {
-        include phorum_get_template("google_maps::profile");
-    }
-}
-
-// Hook: read
-// Setup the author's city and country for the message data.
-function phorum_mod_google_maps_read($messages)
-{
-    global $PHORUM;
-
-    foreach ($messages as $id => $message)
-    {
-        if (!empty($messages[$id]['user']) &&
-            !empty($messages[$id]['user']['mod_google_maps'])) {
-            $m = $messages[$id]['user']['mod_google_maps'];
-            if (!empty($m['geoloc_country'])) {
-                $messages[$id]['user']['country'] = htmlspecialchars(
-                    $m['geoloc_country'], ENT_COMPAT, $PHORUM["DATA"]["HCHARSET"]);
-            }
-            if (!empty($m['geoloc_city'])) {
-                $messages[$id]['user']['city'] = htmlspecialchars(
-                    $m['geoloc_city'], ENT_COMPAT, $PHORUM["DATA"]["HCHARSET"]);
-            }
-        }
-    }
-
-    return $messages;
+        phorum_page == "profile" && 
+        $PHORUM["mod_google_maps"]["profile_auto_show"])
+        include(phorum_get_template("google_maps::profile"));
 }
 
 // Hook: addon
@@ -192,10 +170,19 @@ function phorum_mod_google_maps_addon()
     if (file_exists("./mods/google_maps/addon/{$addon}.php")) {
         include("./mods/google_maps/addon/{$addon}.php");
     } else {
-        // Unknown addon.
+        // Unknown addon. 
         die("Unknown google_maps module addon script: " .
             htmlspecialchars($addon));
     }
 }
+
+// Hook: real_name_add_rules:
+// Supply extra username rewriting rules for the Real Name module.
+function phorum_mod_google_maps_real_name_add_rules($files)
+{
+    $files[] = "./mods/google_maps/rewrite_rules.src";
+    return $files;
+}
+
 
 ?>

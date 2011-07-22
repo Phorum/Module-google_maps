@@ -1,0 +1,9 @@
+# Additional rewrite rules for the real_name v.2 module.
+
+page addon
+  array [DATA->MOD_GOOGLE_MAPS_USERS]
+      rewrite link with profile_url(user_id)
+      rewrite username with displayname(user_id)
+  end array
+end page
+

@@ -1,94 +1,83 @@
-<?php
+<?php 
 
-// Set the page description, title and breadcrumbs.
-$PHORUM['DATA']['HEADING'] =
-    $PHORUM['DATA']['LANG']['mod_google_maps']['UserMapTitle'];
-$PHORUM['DATA']['HTML_DESCRIPTION'] = '';
-$PHORUM['DATA']['DESCRIPTION'] = $PHORUM['DATA']['HEADING'];
-$PHORUM['DATA']['BREADCRUMBS'][] = array(
-    'URL'  => NULL,
-    'TEXT' => $PHORUM['DATA']['HEADING']
-);
-
-// Build standard URLs.
-phorum_build_common_urls();
-
-// Inlude for Phorum 5.2. This API layer is replaced with the custom field
-// API which handles custom fields for forums and messages too. The
-// backward compatibility code in 5.3 will catch the old style API calls.
-if (file_exists('./include/api/custom_profile_fields.php')) {
-    require_once('./include/api/custom_profile_fields.php');
-}
+// Use the active Phorum charset for displaying data on the map.
+$charset = isset($PHORUM["DATA"]["CHARSET"])
+         ? $PHORUM["DATA"]["CHARSET"] : "utf-8";
+header("Content-Type: text/html; charset=".htmlspecialchars($charset));
 
 // Collect all users which have a "mod_google_maps" custom user profile field.
-$field = phorum_api_custom_profile_field_byname('mod_google_maps');
-if (empty($field)) trigger_error(
-    'No custom profile field named "mod_google_maps" available',
-    E_USER_ERROR
-);
-$user_ids = phorum_api_user_search_custom_profile_field(
-    $field['id'], '%', '*', TRUE
-);
+$user_ids = phorum_user_check_custom_field("mod_google_maps", "%", 1);
 
 // Retrieve the data for the users that were found.
-$users = phorum_api_user_get($user_ids);
+$users = phorum_user_get($user_ids);
 
-// Setup a list of markers to plot on the map.
+// Find bounds and create javascript code for placing the markers.
+$x1 = null; $y1 = null;
+$x2 = null; $y2 = null;
 $show = array();
-foreach ($users as $user)
-{
-    $loc = $user['mod_google_maps'];
+foreach ($users as $user) {
+    $loc = $user["mod_google_maps"];
+    if (preg_match(REGEXP_LOCATION, $loc["marker"], $m)) {
+        $user["mod_google_maps"]["lat"] = $m[1];
+        $user["mod_google_maps"]["lng"] = $m[3];
+        $url  = phorum_get_url(PHORUM_PROFILE_URL, $user["user_id"]);
+        $name = htmlspecialchars($user["username"]);
 
-    $plot = NULL;
-
-    if (isset($loc['marker_latitude'])) {
-      $plot = array(
-        'latitude'  => $loc['marker_latitude'],
-        'longitude' => $loc['marker_longitude']
-      );
-    } elseif (isset($loc['streetview_latitude'])) {
-      $plot = array(
-        'latitude'  => $loc['streetview_latitude'],
-        'longitude' => $loc['streetview_longitude']
-      );
-    }
-
-    if (!$plot) continue;
-
-    // Build the contents for the info window.
-    $url  = phorum_get_url(PHORUM_PROFILE_URL, $user['user_id']);
-    $name = (empty($PHORUM["custom_display_name"])
-          ? htmlspecialchars($user['display_name'], ENT_COMPAT, $PHORUM["DATA"]["HCHARSET"])
-          : $user['display_name']);
-    $plot['info'] =
-        "<a href=\"#\" onclick=\"parent.document.location.href='".addslashes($url)."';" .
-                  "return false\">$name</a>";
-
-    // Provide a hook for modules to influence the info window.
-    if (isset($PHORUM['hooks']['google_maps_user_info']))
-    {
-        // Add some extra data for the hook.
-        $plot['user']    = $user;
-        $plot['name']    = $name;
-        $plot['url']     = $url;
-
-        $plot = phorum_hook('google_maps_user_info', $plot);
-    }
-
-    if ($plot) {
-        $show[] = $plot;
+        $show[] = array(
+            'lat'      => $m[1],
+            'lng'      => $m[3],
+            'user_id'  => $user["user_id"],
+            'link'     => $url,
+            'username' => $name,
+        );
     }
 }
 if (count($show) == 0) {
-    phorum_output('google_maps::usermap_nousers');
+    print "<h1>Sorry, no user locations were found in the database</h1>";
+    phorum_hook("after_footer");
+    include phorum_get_template("footer");
     exit();
 }
+$PHORUM["DATA"]["MOD_GOOGLE_MAPS_USERS"] = $show;
 
-// Build HTML code for the map.
-$PHORUM['DATA']['MOD_GOOGLE_MAPS'] =
-    mod_google_maps_build_maptool('plotter', $show);
+// Create the map to show.
+$data   = isset($PHORUM["DATA"]["mod_google_maps"])
+        ? $PHORUM["DATA"]["mod_google_maps"] : array();
+$width  = isset($data["usermap_width"]) ? $data["usermap_width"] : '';
+$height = isset($data["usermap_height"]) ? $data["usermap_height"] : '';
+$PHORUM["maptool"] = array(
+    "width"    => $width,
+    "height"   => $height,
+    "viewtype" => "plot",
+);
+ob_start();
+include("./mods/google_maps/maptool/viewer.php");
+$PHORUM["DATA"]["MOD_GOOGLE_MAPS"] = ob_get_contents();
+ob_end_clean();
+
+// Display the header.
+include phorum_get_template("header");
+phorum_hook("after_header");
+
+// Add usermap marker list.
+?>
+<!-- taa -->
+<script type="text/javascript">
+//<!--
+var markers = new Array(
+<?php foreach ($PHORUM["DATA"]["MOD_GOOGLE_MAPS_USERS"] as $user) { ?>
+  new Array(<?php print $user["lat"]?>, <?php print $user["lng"]?>, '<a href="<?php print addslashes($user["link"]) ?>" target="_parent"><?php print addslashes($user["username"]) ?></a>'),
+<?php } ?>
+  null
+);
+// -->
+</script>
+<?php
 
 // Display the user map.
-phorum_output('google_maps::usermap');
+include phorum_get_template("google_maps::usermap");
 
+// Display the footer.
+phorum_hook("before_footer");
+include phorum_get_template("footer");
 ?>

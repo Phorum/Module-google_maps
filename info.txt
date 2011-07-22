@@ -1,17 +1,13 @@
 title: Google Maps
 desc: This module implements Google Maps functionality in the user profile. The user can indicate in the control center where he/she lives and this location can be displayed to others on the profile viewing screen.
-version: 2.0.5
-require_version: 5.2.16
-author: Maurice Makaay <maurice@phorum.org>
+version: 1.0.6
 link: http://www.phorum.org/phorum5/read.php?16,119681
-category: user_features
 
 hook: lang|
-hook: tpl_cc_menu_options_hook|phorum_mod_google_maps_cc_menu_options_hook
-hook: cc_panel|phorum_mod_google_maps_cc_panel
-hook: profile|phorum_mod_google_maps_profile
+hook: after_header|phorum_mod_google_maps_after_header
+hook: tpl_cc_usersettings|phorum_mod_google_maps_tpl_cc_usersettings
+hook: cc_save_user|phorum_mod_google_maps_cc_save_user
 hook: common|phorum_mod_google_maps_common
-hook: before_footer_profile|phorum_mod_google_maps_before_footer_profile
+hook: before_footer|phorum_mod_google_maps_before_footer
 hook: addon|phorum_mod_google_maps_addon
-hook: profile|phorum_mod_google_maps_profile
-hook: read|phorum_mod_google_maps_read
+hook: real_name_add_rules|phorum_mod_google_maps_real_name_add_rules 
