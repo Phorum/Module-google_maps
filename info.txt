@@ -3,7 +3,7 @@ desc: This module implements Google Maps functionality in the user profile. The 
 version: 2.0.5
 require_version: 5.2.16
 author: Maurice Makaay <maurice@phorum.org>
-link: http://www.phorum.org/phorum5/read.php?16,119681
+url: http://www.phorum.org/phorum5/read.php?16,119681
 category: user_features
 
 hook: lang|
@@ -13,5 +13,4 @@ hook: profile|phorum_mod_google_maps_profile
 hook: common|phorum_mod_google_maps_common
 hook: before_footer_profile|phorum_mod_google_maps_before_footer_profile
 hook: addon|phorum_mod_google_maps_addon
-hook: profile|phorum_mod_google_maps_profile
 hook: read|phorum_mod_google_maps_read

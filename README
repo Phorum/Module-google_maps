@@ -1,16 +1,14 @@
-Module  : Google Maps Module
-Version : 2.0.5
-Author  : Maurice Makaay <maurice@phorum.org>
+Module  : @TITLE@
+Version : @VERSION@
+Author  : @AUTHOR@
 
-This module implements Google Maps functionality in the user profile.
-The user can indicate in the control center where he/she lives and this
-location can be displayed to others on the profile viewing screen.
+@DESCRIPTION@
 
 The module can also be used to plot all known user locations on a map.
 You will have to create a link to this user map yourself. See "Customization"
 below for information on how to link to this user map.
 
-For running this mod, you need Phorum 5.2.0 or later. It will not
+For running this mod, you need Phorum @REQUIRED_VERSION@ or later. It will not
 work for earlier versions of Phorum.
 
 
@@ -33,13 +31,13 @@ Contents:
 
 - Unpack the archive;
 
-- Move the directory "google_maps" to the directory "mods"
+- Move the directory "@MODULE_ID@" to the directory "mods"
   within your Phorum installation;
 
 - Login as administrator in Phorum's administrative interface and
   go to the "Modules" section;
 
-- Enable the module "Google Maps".
+- Enable the module "@TITLE@".
 
 - Configure the module through the module's settings page.
 
@@ -51,7 +49,7 @@ Contents:
  ----------------------------------
 
   Please note that some new files have been added to the module template
-  directory mods/google_maps/templates/emerald/. If you did not create a
+  directory mods/@MODULE_ID@/templates/emerald/. If you did not create a
   custom template directory next to that emerald directory, then you are fine.
   If you did create a custom template however, you will have to make sure
   that your custom template contains all templates from the emerald directory
@@ -66,12 +64,12 @@ Contents:
   - Login as administrator in Phorum's administrative interface and
     go to the "Modules" section;
 
-  - Disable the module "Google Maps".
+  - Disable the module "@TITLE@".
 
-  - Delete the directory "mods/google_maps" within your Phorum installation
+  - Delete the directory "mods/@MODULE_ID@" within your Phorum installation
     (but keep of course customized template files if you have those).
 
-  - Move the new "google_maps" directory to the "mods" directory.
+  - Move the new "@MODULE_ID@" directory to the "mods" directory.
 
   - Go to the Modules administration and enable the module "Google Maps".
 
@@ -85,8 +83,8 @@ Contents:
   This module makes use of module templates. If you want to modify the
   templates to make them work better for your site's template, then do
   not edit the template files that were in the module distribution.
-  Instead, copy the full directory "mods/google_maps/templates/default" to
-  "mods/google_maps/templates/yourtemplatename" (asuming that your site's
+  Instead, copy the full directory "mods/@MODULE_ID@/templates/default" to
+  "mods/@MODULE_ID@/templates/yourtemplatename" (asuming that your site's
   template is stored as "templates/yourtemplatename") and edit the files
   in the new directory. Phorum will automatically recognize that you have
   created a specific template set to use for your site's active template.
@@ -198,5 +196,5 @@ Contents:
   <a href="{URL->MOD_GOOGLE_MAPS_USERMAP}">View user locations</a>
 
   For modifying the user map page itself, you can change the module
-  template usermap.tpl (mods/google_maps/templates/yourtemplate/usermap.tpl).
+  template usermap.tpl (mods/@MODULE_ID@/templates/yourtemplate/usermap.tpl).
 
