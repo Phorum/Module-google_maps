@@ -33,6 +33,48 @@ $user_ids = phorum_api_user_search_custom_profile_field(
 // Retrieve the data for the users that were found.
 $users = phorum_api_user_get($user_ids);
 
+/**
+ * [hook]
+ *     google_maps_user_list
+ *
+ * [availability]
+ *     Google Maps Module > 2.0.5
+ *
+ * [description]
+ *     This hook can be used for filtering
+ *     the list of users shown on the Google Maps Map.
+ *
+ * [category]
+ *     Module Google Maps
+ *
+ * [when]
+ *     Right before the Google Maps module shows the map
+ *
+ * [input]
+ *     An array of users which are supposed to be shown on the map
+ *
+ * [output]
+ *     Same as input.
+ *
+ * [example]
+ *     <hookcode>
+ *     function phorum_mod_foo_google_maps_user_list($users)
+ *     {
+ *         foreach($users as $uid => $user) {
+ *              // remove user with username 'admin' from the shown users
+ *              if($user['username'] == 'admin') {
+ *                  unset($users[$uid]);
+ *              }
+ *         }
+ *
+ *         return $users;
+ *     }
+ *     </hookcode>
+ */
+if (isset($PHORUM['hooks']['google_maps_user_list'])) {
+    $users = phorum_hook('google_maps_user_list', $users);
+}
+
 // Setup a list of markers to plot on the map.
 $show = array();
 foreach ($users as $user)
