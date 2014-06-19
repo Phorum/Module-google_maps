@@ -1,6 +1,6 @@
 title: Google Maps
 desc: This module implements Google Maps functionality in the user profile. The user can indicate in the control center where he/she lives and this location can be displayed to others on the profile viewing screen.
-version: 2.0.5
+version: 2.0.6
 require_version: 5.2.16
 author: Maurice Makaay <maurice@phorum.org>
 url: http://www.phorum.org/phorum5/read.php?16,119681
